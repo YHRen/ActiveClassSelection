@@ -37,3 +37,8 @@ target_mapping = {0:0, 1:0, 2:0, 3:0, 4:0, 5:1, 6:2, 7:3, 8:4, 9:0}
 data_set = TargetTransformDataset(train_set, target_mapping = target_mapping)
 ##then, loader = DataLoader(data_set, ...), and so on
 ```
+
+
+## TODO
+
+* update data_sufficiency_perclsacc  main from dgx2.

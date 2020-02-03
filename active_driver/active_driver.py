@@ -72,7 +72,6 @@ class UniformRandomDriver(ActiveClassDriver):
             bgt = self.budgets_per_class[self.idx]
         else:
             bgt = self.budgets_per_class
-            # self.idx remains -1
 
         return dict(zip(range(self.num_classes), its.repeat(bgt)))
 
