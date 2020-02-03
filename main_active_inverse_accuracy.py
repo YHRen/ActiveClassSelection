@@ -35,6 +35,7 @@ if __name__ == "__main__":
 #    parser.add_argument("--combo-class-budget", help="number of samples of the\
 #                         combo class after the 1st stage, default=1000 \
 #                        (at random), [0, 5000]", type=int, default=1000)
+    parser.add_argument("--inverse-power", help="power of inverse accuracy", type=int, default=1)
     parser.add_argument("--marginal-increment", help="number of samples per\
                         class on average", default=1000, type=int)
     parser.add_argument("--gpu-device-id", help="GPU device id [=0]", type=int,
@@ -44,7 +45,7 @@ if __name__ == "__main__":
     parser.add_argument("--randseed", help="random seed for selecting a subset of the \
                           training data.", type=int, default=None, required=False)
     parser.add_argument("--augment", help="use data augmentation (random crop)\
-                        ", type=bool, default=False, required=False)
+                        ", action='store_true')
 
     args = parser.parse_args()
     (Path(args.output)/args.experiment_name).mkdir(parents=True, exist_ok=True)
@@ -91,7 +92,8 @@ if __name__ == "__main__":
     
     test_sampler = StatefulDataSampler(tt_test_set)
     num_classes = len(set(target_mapping.values()))
-    active_cls_driver = InverseAccuracyDriver(num_classes, 5000)
+    active_cls_driver = InverseAccuracyDriver(num_classes, 
+            num_classes*args.marginal_increment, pw=args.inverse_power)
     test_sampler.add_samples(dict(zip(range(5), its.repeat(1000)))) ## for testing balanced class
     test_data = Subset(tt_test_set, test_sampler.get_samples())
     test_loader = DataLoader(test_data, batch_size=bsz, shuffle=False, num_workers=4)
@@ -101,12 +103,6 @@ if __name__ == "__main__":
                                         random_seed=args.randseed)
     record['time'].append(time.perf_counter())
     for stage in range(5): 
-        ##  if stage == 0: ## initial stage, random sampling
-        ##      train_sampler.add_samples(dict(zip(range(5), its.repeat(args.marginal_increment))))
-        ##  else:
-        ##      budget_per_class = [(5000-args.combo_class_budget)//4]*4 + [args.combo_class_budget]
-        ##      train_sampler.add_samples(dict(zip(range(5), budget_per_class)))
-
         cur_plan = active_cls_driver.get_plan()
         record[f"stage_{stage}_sample_plan"] = [cur_plan[k] for k in sorted(cur_plan.keys())]
         train_sampler.add_samples(active_cls_driver.get_plan())

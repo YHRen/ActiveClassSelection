@@ -83,8 +83,7 @@ class InverseAccuracyDriver(ActiveClassDriver):
         based on the validation accuracy of a class.
     """
 
-
-    def __init__(self, num_classes: int, budgets_per_stage: int or list):
+    def __init__(self, num_classes: int, budgets_per_stage: int or list, pw=1):
         r"""
             num_classes: int
             budgets_per_stage: <int> total number of samples per stage
@@ -98,6 +97,7 @@ class InverseAccuracyDriver(ActiveClassDriver):
             tmp = budgets_per_stage[0] // num_classes
             self.idx = 0
 
+        self.pw = pw 
         self.current_budgets = [tmp]*num_classes
 
     def __get_budget_per_stage(self):
@@ -106,7 +106,6 @@ class InverseAccuracyDriver(ActiveClassDriver):
         else:
             bgt = self.budgets_per_stage
         return bgt
-
 
     def step(self, valid_acc_per_cls, *args, **kwargs):
         r"""
@@ -122,8 +121,9 @@ class InverseAccuracyDriver(ActiveClassDriver):
                 inv_acc.append(tmp)
                 sum_acc += tmp
             else:
-                inv_acc.append(1/acc)
-                sum_acc += 1/acc
+                tmp = np.power(1/acc, self.pw)
+                inv_acc.append(tmp)
+                sum_acc += tmp
 
         prob = [ia/sum_acc for ia in inv_acc]
         bgts = [int(p*tot_bgt) for p in prob]
@@ -139,3 +139,4 @@ class InverseAccuracyDriver(ActiveClassDriver):
     def get_plan(self, *args, **kwargs):
         return dict(zip(range(self.num_classes),
                         self.current_budgets))
+
