@@ -97,6 +97,17 @@ class AccuracyRecorder(Recorder):
         self.tot = 0
 
 
+class ProtoAccuracyRecorder(AccuracyRecorder):
+
+    def record(self, delta_step, output, target, *args, **kwargs):
+        output = output[1]
+        if not self.update(delta_step):
+            return
+        pred = output.argmax(dim=1, keepdim=True)
+        self.correct += pred.eq(target.view_as(pred)).sum().item()
+        self.tot += len(target)
+
+
 class AccuracyPerClassRecorder(Recorder):
     r"""
         TP/P per class. true-positive over positive
@@ -114,6 +125,43 @@ class AccuracyPerClassRecorder(Recorder):
             target is a tensor of size (Bsz)
             return: accuracy counts per class
         """
+        if not self.update(delta_step):
+            return
+
+        if self.cnt is None:
+            num_class = output.size(1)
+            self.cnt = np.zeros(num_class, dtype=np.int64)
+            self.cor = np.zeros(num_class, dtype=np.int64)
+
+        np.add.at(self.cnt, target.cpu().numpy(), 1)
+        np.add.at(self.cor, target.cpu().numpy(), \
+                  (output.max(1)[1] == target).cpu().numpy())
+
+    def report(self):
+        return (self.cor / self.cnt).tolist()
+
+    def reset(self):
+        if self.cnt is None:
+            return
+        self.cnt.fill(0)
+        self.cor.fill(0)
+
+
+class ProtoAccuracyPerClassRecorder(AccuracyPerClassRecorder):
+    r"""
+        TP/P per class. true-positive over positive
+        see BalancedAccuracy paper. (average of accuracy per class)
+        https://ong-home.my/papers/brodersen10post-balacc.pdf
+    """
+
+
+    def record(self, delta_step, output, target, *args, **kwargs):
+        r"""
+            output is a tensor of size (Bsz, ClsSz)
+            target is a tensor of size (Bsz)
+            return: accuracy counts per class
+        """
+        output = output[1]
         if not self.update(delta_step):
             return
 

@@ -40,8 +40,7 @@ if __name__ == "__main__":
     parser.add_argument("--randseed", help="random seed for selecting a subset of the \
                           training data.", type=int, default=None, required=False)
     parser.add_argument("--augment", help="use data augmentation (random crop)\
-                        ", type=bool, default=False, required=False)
-
+                        ", action='store_true')
     args = parser.parse_args()
     (Path(args.output)/args.experiment_name).mkdir(parents=True, exist_ok=True)
     record_file = Path(args.output)/args.experiment_name/"result.json"
@@ -75,7 +74,8 @@ if __name__ == "__main__":
             transforms.ToTensor(),
             transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
         ])
-    
+
+    ## Setup the DataLoader
     train_set = torchvision.datasets.CIFAR10(root='./data', train=True,
                                              download=True, transform=transform)
     test_set = torchvision.datasets.CIFAR10(root='./data', train=False,
@@ -110,7 +110,7 @@ if __name__ == "__main__":
         train_loader = DataLoader(train_data, batch_size=bsz, shuffle=True, num_workers=4)
         
         ## setup model, optim, loss_fn, summary_writer
-        model = models.resnet18(num_classes=len(set(target_mapping.values()))).to(device)
+        model = models.resnet18().to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=0.0001, weight_decay=0.01)
         loss_fn = torch.nn.CrossEntropyLoss()
         summary_writer = SummaryWriter(args.output+"/"+args.experiment_name+"/"+f"stage_{stage}")

@@ -31,11 +31,11 @@ if __name__ == "__main__":
                           type=str, required=True)
     parser.add_argument("-b", "--batch-size", help="batch size", type=int, required=True)
     parser.add_argument("-e", "--epochs", help="number of epochs", type=int, required=True)
-    parser.add_argument("--combo-class-budget", help="number of samples of the\
-                         combo class after the 1st stage, default=1000 \
+    parser.add_argument("--initial-class-budget", help="number of samples of the \
+                        1st stage of the each class, default=1000", type=int, default=1000)
+    parser.add_argument("--combo-class-budget", help="number of samples after\
+                        1st stage of the combo class, default=1000 \
                         (at random), [0, 5000]", type=int, default=1000)
-    parser.add_argument("--marginal-increment", help="number of samples per\
-                        class on average", default=1000, type=int)
     parser.add_argument("--gpu-device-id", help="GPU device id [=0]", type=int,
                           required=False, default=0)
     parser.add_argument("--output", help="directory to output model results",
@@ -43,7 +43,7 @@ if __name__ == "__main__":
     parser.add_argument("--randseed", help="random seed for selecting a subset of the \
                           training data.", type=int, default=None, required=False)
     parser.add_argument("--augment", help="use data augmentation (random crop)\
-                        ", type=bool, default=False, required=False)
+                        ", action='store_true')
 
     args = parser.parse_args()
     (Path(args.output)/args.experiment_name).mkdir(parents=True, exist_ok=True)
@@ -96,10 +96,14 @@ if __name__ == "__main__":
     ## Setup the Active Learning
     train_sampler = StatefulDataSampler(tt_train_set,
                                         random_seed=args.randseed)
+    train_loss_per_stage = []
+    test_loss_per_stage = []
+    test_acc_per_stage = []
+    test_acc_best_per_stage = []
     record['time'].append(time.perf_counter())
     for stage in range(5): 
         if stage == 0: ## initial stage, random sampling
-            train_sampler.add_samples(dict(zip(range(5), its.repeat(args.marginal_increment))))
+            train_sampler.add_samples(dict(zip(range(5), its.repeat(args.initial_class_budget))))
         else:
             budget_per_class = [(5000-args.combo_class_budget)//4]*4 + [args.combo_class_budget]
             train_sampler.add_samples(dict(zip(range(5), budget_per_class)))

@@ -1,9 +1,9 @@
 """
-    Experiments on active class selection. 
-    >>>inverse accuracy method<<<
+    Experiments on data sufficiency test. 
     Each Stage has 5000 samples
     5 Stages in total
     First stage is randomly sampled.
+
 """
 
 
@@ -24,7 +24,7 @@ from pathlib import Path
 from dataset_utils import *
 from procedure import train, test, train_with_recorders, test_with_recorders
 from recorder.recorder import *
-from active_driver.active_driver import InverseAccuracyDriver, ActiveClassDriver
+from proto.prototypical_loss import Prototypical
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -32,16 +32,15 @@ if __name__ == "__main__":
                           type=str, required=True)
     parser.add_argument("-b", "--batch-size", help="batch size", type=int, required=True)
     parser.add_argument("-e", "--epochs", help="number of epochs", type=int, required=True)
-#    parser.add_argument("--combo-class-budget", help="number of samples of the\
-#                         combo class after the 1st stage, default=1000 \
-#                        (at random), [0, 5000]", type=int, default=1000)
-    parser.add_argument("--inverse-power", help="power of inverse accuracy", type=float, default=1)
-    parser.add_argument("--marginal-increment", help="number of samples per\
-                        class on average", default=1000, type=int)
+    parser.add_argument("--combo-class-budget", help="number of samples after\
+                        1st stage of the combo class, default=1000 \
+                        (at random), [0, 5000]", type=int, default=1000)
     parser.add_argument("--gpu-device-id", help="GPU device id [=0]", type=int,
                           required=False, default=0)
     parser.add_argument("--output", help="directory to output model results",
                           type=str, default="./output/", required=False)
+    parser.add_argument("--feature-dim", help="feature dimension of the \
+                        prototype loss", type=int, default=64, required=False)
     parser.add_argument("--randseed", help="random seed for selecting a subset of the \
                           training data.", type=int, default=None, required=False)
     parser.add_argument("--augment", help="use data augmentation (random crop)\
@@ -91,9 +90,6 @@ if __name__ == "__main__":
     tt_test_set = TargetTransformDataset(test_set, target_mapping=target_mapping)
     
     test_sampler = StatefulDataSampler(tt_test_set)
-    num_classes = len(set(target_mapping.values()))
-    active_cls_driver = InverseAccuracyDriver(num_classes, 
-            num_classes*args.marginal_increment, pw=args.inverse_power)
     test_sampler.add_samples(dict(zip(range(5), its.repeat(1000)))) ## for testing balanced class
     test_data = Subset(tt_test_set, test_sampler.get_samples())
     test_loader = DataLoader(test_data, batch_size=bsz, shuffle=False, num_workers=4)
@@ -101,11 +97,18 @@ if __name__ == "__main__":
     ## Setup the Active Learning
     train_sampler = StatefulDataSampler(tt_train_set,
                                         random_seed=args.randseed)
+    marginal_increment = 1000
+    train_loss_per_stage = []
+    test_loss_per_stage = []
+    test_acc_per_stage = []
+    test_acc_best_per_stage = []
     record['time'].append(time.perf_counter())
     for stage in range(5): 
-        cur_plan = active_cls_driver.get_plan()
-        record[f"stage_{stage}_sample_plan"] = [cur_plan[k] for k in sorted(cur_plan.keys())]
-        train_sampler.add_samples(active_cls_driver.get_plan())
+        if stage == 0: ## initial stage, random sampling
+            train_sampler.add_samples(dict(zip(range(5), its.repeat(marginal_increment))))
+        else:
+            budget_per_class = [(5000-args.combo_class_budget)//4]*4 + [args.combo_class_budget]
+            train_sampler.add_samples(dict(zip(range(5), budget_per_class)))
         train_data = Subset(tt_train_set, train_sampler.get_samples())
         #print(f"stage = {stage} with training data = {len(train_data)}")
         train_loader = DataLoader(train_data, batch_size=bsz, shuffle=True, num_workers=4)
@@ -114,24 +117,32 @@ if __name__ == "__main__":
 
         rec_freq = 1000
         overall_recorders = [StepRecorder("steps", rec_freq), \
-                             LossRecorder("train_loss", rec_freq)\
                              ]
+
+                             #LossRecorder("train_loss", rec_freq)\
         train_recorders = [AccuracyRecorder("train_acc", 0),\
                            AccuracyPerClassRecorder("train_acc_per_class", 0)\
                            ]
         test_recorders =  [AccuracyRecorder("test_acc"),\
                            AccuracyPerClassRecorder("test_acc_per_class"),\
-                           AverageLossRecorder("test_loss")\
                            ]
+                           #AverageLossRecorder("test_loss")\
 
         ## setup model, optim, loss_fn, summary_writer
-        model = models.resnet18(num_classes=len(set(target_mapping.values()))).to(device)
+        num_classes = len(set(target_mapping.values()))
+        model = models.resnet18(num_classes=num_classes).to(device)
+        ## last layer of resnet18 is fc
+        model.fc = torch.nn.Linear(in_features=model.fc.in_features, \
+                                   out_features=args.feature_dim, \
+                                   bias=False)
+        model = Prototypical(model, num_classes, args.feature_dim, \
+                             lmd=0.01, proto_per_cls=1)
         optimizer = torch.optim.Adam(model.parameters(), lr=0.0001, weight_decay=0.01)
-        loss_fn = torch.nn.CrossEntropyLoss()
+        loss_fn = model.get_loss()
+        #loss_fn = torch.nn.CrossEntropyLoss()
         # summary_writer = SummaryWriter(args.output+"/"+args.experiment_name+"/"+f"stage_{stage}")
-        best_test_acc, acc_per_cls = 0, None
+        best_test_acc = 0
         test_acc_this_stage = []
-
         for epoch in range(epochs):
             train_with_recorders(model, train_loader, optimizer,\
                                  loss_fn, epoch, device, \
@@ -140,18 +151,12 @@ if __name__ == "__main__":
             test_with_recorders(model, test_loader, loss_fn, epoch, device,\
                                 recorders=test_recorders)
 
-            if best_test_acc < test_recorders[0].report():
-                best_test_acc = test_recorders[0].report()
-                acc_per_cls = test_recorders[1].report()
-            
             for rcd in its.chain(train_recorders, test_recorders):
                 record[f"stage_{stage}_{rcd.name}"].append(rcd.report())
                 rcd.reset()
 
         for rcd in overall_recorders:
             record[f'stage_{stage}_{rcd.name}'] = rcd.report()
-
-        active_cls_driver.step(acc_per_cls)
 
 
     with open(record_file, 'w') as fp:
