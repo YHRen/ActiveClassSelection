@@ -32,6 +32,8 @@ if __name__ == "__main__":
                           type=str, required=True)
     parser.add_argument("-b", "--batch-size", help="batch size", type=int, required=True)
     parser.add_argument("-e", "--epochs", help="number of epochs", type=int, required=True)
+    parser.add_argument("--initial-class-budget", help="number of samples of the \
+                        1st stage of the each class, default=1000", type=int, default=1000)
     parser.add_argument("--combo-class-budget", help="number of samples after\
                         1st stage of the combo class, default=1000 \
                         (at random), [0, 5000]", type=int, default=1000)
@@ -97,17 +99,18 @@ if __name__ == "__main__":
     ## Setup the Active Learning
     train_sampler = StatefulDataSampler(tt_train_set,
                                         random_seed=args.randseed)
-    marginal_increment = 1000
     train_loss_per_stage = []
     test_loss_per_stage = []
     test_acc_per_stage = []
     test_acc_best_per_stage = []
     record['time'].append(time.perf_counter())
+    num_classes = len(set(target_mapping.values()))
+    budget_per_stage = args.initial_class_budget * num_classes
     for stage in range(5): 
         if stage == 0: ## initial stage, random sampling
-            train_sampler.add_samples(dict(zip(range(5), its.repeat(marginal_increment))))
+            train_sampler.add_samples(dict(zip(range(5), its.repeat(args.initial_class_budget))))
         else:
-            budget_per_class = [(5000-args.combo_class_budget)//4]*4 + [args.combo_class_budget]
+            budget_per_class = [(budget_per_stage-args.combo_class_budget)//4]*4 + [args.combo_class_budget]
             train_sampler.add_samples(dict(zip(range(5), budget_per_class)))
         train_data = Subset(tt_train_set, train_sampler.get_samples())
         #print(f"stage = {stage} with training data = {len(train_data)}")
@@ -120,11 +123,11 @@ if __name__ == "__main__":
                              ]
 
                              #LossRecorder("train_loss", rec_freq)\
-        train_recorders = [AccuracyRecorder("train_acc", 0),\
-                           AccuracyPerClassRecorder("train_acc_per_class", 0)\
+        train_recorders = [ProtoAccuracyRecorder("train_acc", 0),\
+                           ProtoAccuracyPerClassRecorder("train_acc_per_class", 0)\
                            ]
-        test_recorders =  [AccuracyRecorder("test_acc"),\
-                           AccuracyPerClassRecorder("test_acc_per_class"),\
+        test_recorders =  [ProtoAccuracyRecorder("test_acc"),\
+                           ProtoAccuracyPerClassRecorder("test_acc_per_class"),\
                            ]
                            #AverageLossRecorder("test_loss")\
 

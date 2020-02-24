@@ -101,11 +101,13 @@ if __name__ == "__main__":
     test_acc_per_stage = []
     test_acc_best_per_stage = []
     record['time'].append(time.perf_counter())
+    num_classes = len(set(target_mapping.values()))
+    budget_per_stage = args.initial_class_budget * num_classes
     for stage in range(5): 
         if stage == 0: ## initial stage, random sampling
             train_sampler.add_samples(dict(zip(range(5), its.repeat(args.initial_class_budget))))
         else:
-            budget_per_class = [(5000-args.combo_class_budget)//4]*4 + [args.combo_class_budget]
+            budget_per_class = [(budget_per_stage-args.combo_class_budget)//4]*4 + [args.combo_class_budget]
             train_sampler.add_samples(dict(zip(range(5), budget_per_class)))
         train_data = Subset(tt_train_set, train_sampler.get_samples())
         #print(f"stage = {stage} with training data = {len(train_data)}")
