@@ -201,6 +201,39 @@ class LossRecorder(Recorder):
         self.data = []
 
 
+class FeatureRecorder(Recorder):
+    r"""
+        for prototpial loss
+    """
+    def __init__(self, name, record_interval=0, starting_at=0):
+        super().__init__(name, record_interval, starting_at)
+        self.data = []
+
+    def record(self, delta_step, output, target, *args, **kwargs):
+        if self.update(delta_step):
+            self.data.append(output[2].cpu().numpy())
+
+    def report(self):
+        return self.data
+
+    def reset(self):
+        self.data = []
+
+
+class TargetRecorder(Recorder):
+    def __init__(self, name, record_interval=0, starting_at=0):
+        super().__init__(name, record_interval, starting_at)
+        self.data = []
+
+    def record(self, delta_step, output, target, *args, **kwargs):
+        if self.update(delta_step):
+            self.data.append(target.cpu().numpy())
+
+    def report(self):
+        return self.data
+
+    def reset(self):
+        self.data = []
 class AverageLossRecorder(Recorder):
 
     def __init__(self, name, record_interval=0, starting_at=0):
