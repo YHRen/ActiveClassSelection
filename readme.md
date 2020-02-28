@@ -84,4 +84,3 @@ do
 done
 ```
 
-* update data_sufficiency_perclsacc  main from dgx2.
