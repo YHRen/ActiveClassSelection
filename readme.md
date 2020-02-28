@@ -39,6 +39,49 @@ data_set = TargetTransformDataset(train_set, target_mapping = target_mapping)
 ```
 
 
-## TODO
+## Recorder
+```
+rec_freq = 1000
+overall_recorders = [StepRecorder("steps", rec_freq), \
+                    LossRecorder("train_loss", rec_freq)\
+]
+train_recorders = [AccuracyRecorder("train_acc", 0),\
+                  AccuracyPerClassRecorder("train_acc_per_class", 0)\
+]
+test_recorders =  [AccuracyRecorder("test_acc"),\
+                  AccuracyPerClassRecorder("test_acc_per_class"),\
+                  AverageLossRecorder("test_loss")\
+]
+```
+
+```
+for rcd in its.chain(train_recorders, test_recorders):
+    record[f"stage_{stage}_{rcd.name}"].append(rcd.report())
+    rcd.reset()
+
+with open(record_file, 'w') as fp:
+    json.dump(record, fp, indent=2)
+```
+
+## Experiments BASH script
+
+```bash
+#!/bin/bash
+## for per-class-accuracy run
+seedbase=102
+exp_name=acc_per_class_manual_active_with_data_aug
+main=main_data_sufficiency_perclassacc.py
+for budget in 760 1000 1500;
+do
+    for i in `seq 15`;
+    do  
+        python ${main} -n "${exp_name}_${budget}_run$((i))" -b 256 -e 150 \
+        --combo-class-budget ${budget} \
+        --augment \
+        --gpu-device-id $((i)) --output ./output --randseed $((i+seebase)) &
+    done
+    wait
+done
+```
 
 * update data_sufficiency_perclsacc  main from dgx2.
